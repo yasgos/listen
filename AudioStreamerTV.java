@@ -1,55 +1,62 @@
-import android.media.AudioFormat;
+import android.app.Activity;
+import android.os.Bundle;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
-import android.os.AsyncTask;
+import android.util.Log;
+import java.io.FileOutputStream;
+import java.io.IOException;
 
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+public class AudioStreamerTV extends Activity {
+    private AudioRecord recorder;
+    private int bufferSize;
+    private static final int SAMPLE_RATE = 44100;
+    private static final int AUDIO_SOURCE = MediaRecorder.AudioSource.MIC;
+    private byte[] audioBuffer;
 
-public class AudioStreamer {
-    private static final int SAMPLE_RATE = 16000;
-    private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
-    private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
-    private static final int BUFFER_SIZE = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_audio_streamer_tv);
 
-    private AudioRecord audioRecord;
-    private boolean isStreaming = false;
-    private String serverIp = "192.168.1.5"; // Telefonun IP adresi
-    private int serverPort = 50005;
+        bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        recorder = new AudioRecord(AUDIO_SOURCE, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
 
-    public void startStreaming() {
-        audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC,
-                SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, BUFFER_SIZE);
-
-        isStreaming = true;
-        audioRecord.startRecording();
-
-        new Thread(() -> {
-            try {
-                DatagramSocket socket = new DatagramSocket();
-                byte[] buffer = new byte[BUFFER_SIZE];
-                InetAddress address = InetAddress.getByName(serverIp);
-
-                while (isStreaming) {
-                    int read = audioRecord.read(buffer, 0, buffer.length);
-                    if (read > 0) {
-                        DatagramPacket packet = new DatagramPacket(buffer, read, address, serverPort);
-                        socket.send(packet);
-                    }
-                }
-
-                socket.close();
-                audioRecord.stop();
-                audioRecord.release();
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
+        // Ses kaydetmeye başla
+        startRecording();
     }
 
-    public void stopStreaming() {
-        isStreaming = false;
+    private void startRecording() {
+        if (recorder != null && recorder.getState() == AudioRecord.STATE_INITIALIZED) {
+            recorder.startRecording();
+            Log.d("AudioStreamerTV", "Recording started");
+
+            // Ses verisini almak
+            audioBuffer = new byte[bufferSize];
+            while (recorder.read(audioBuffer, 0, audioBuffer.length) > 0) {
+                writeDataToFile(audioBuffer);
+            }
+        }
+    }
+
+    private void writeDataToFile(byte[] audioData) {
+        try {
+            // Dosyayı belirli bir yolda oluşturuyoruz
+            FileOutputStream fos = new FileOutputStream("/path/to/your/file.wav", true); // 'true' eklersek dosyaya ekleme yapar
+            fos.write(audioData);
+            fos.close();
+            Log.d("AudioStreamerTV", "Data saved to file");
+        } catch (IOException e) {
+            Log.e("AudioStreamerTV", "Error saving data", e);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (recorder != null) {
+            recorder.stop();
+            recorder.release();
+            Log.d("AudioStreamerTV", "Recording stopped");
+        }
     }
 }
